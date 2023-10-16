@@ -15,12 +15,12 @@ const controller = {}
 
 controller.login = async (req, res) => {
     try {
-        const { identifier, password } = req.body;
+        const { ide, idp } = req.body;
     
         let data;
 
         try {
-            data = await userAuthSchema.validateAsync({ email: identifier, password: password }, { abortEarly: false });
+            data = await userAuthSchema.validateAsync({ email: ide, password: idp }, { abortEarly: false });
         }
         catch (err) {
             debugData(err.details);
@@ -36,19 +36,19 @@ controller.login = async (req, res) => {
         );
         
         if (!user) {
-            return res.status(401).json({ error: "Credenciales incorrectas", details: {} });
+            return res.status(401).json({ error: "This credentials are invalid", details: {} });
         }
         
         const unlock = await unlockAccount(user._id);
         debugData(unlock);
 
         if(unlock) {
-            return res.status(401).json({ error: "Cuenta bloqueada intenta en 5 minutos", details: {status: unlock} });
+            return res.status(401).json({ error: "Account blocked try again in 5 minutes", details: {status: unlock} });
         }
 
         if (!comparePassword(user.hash, user.salt, data.password)) {
             lockAccount(user._id);
-            return res.status(401).json({ error: "Credenciales incorrectas", details: {} });
+            return res.status(401).json({ error: "This credentials are invalid", details: {} });
         }
 
         delete user.hash;
@@ -74,7 +74,7 @@ controller.login = async (req, res) => {
         debugInsert(newJWT);
 
         if (!newJWT) {
-            return res.status(409).json({error: "Ocurrio un error al registrar el jwt", details: {}});
+            return res.status(409).json({error: "An error ocurred when trying to login", details: {}});
         }
 
         return res.status(200).json({
@@ -83,7 +83,7 @@ controller.login = async (req, res) => {
         });
     } catch (error) {
         debugMongo({ error });
-        return res.status(500).json({ error: "Error Inesperado", details: {}});
+        return res.status(500).json({ error: "Internal server error", details: {}});
     }
 };
 

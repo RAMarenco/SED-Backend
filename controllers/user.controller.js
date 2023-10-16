@@ -42,7 +42,7 @@ controller.create = async (req, res) => {
         const verifyUser = await userCollection().find({email: data.email}).project(projectUser).toArray();
         debugFind(verifyUser);
         if (verifyUser.length !== 0) {
-            return res.status(409).json({error: "El dato ya existe",  details: {}});
+            return res.status(409).json({error: "User already exists",  details: {}});
         }
 
         const salt = makeSalt();
@@ -68,13 +68,13 @@ controller.create = async (req, res) => {
         debugInsert(newUser);
 
         if (!newUser) {
-            return res.status(409).json({error: "Ocurrio un error al registrar el usuario",  details: {}});
+            return res.status(409).json({error: "An error ocurred when trying to create the user",  details: {}});
         }
 
         return res.status(201).json({status: "success"});
     } catch (err) {
         debugMongo({err});
-        return res.status(500).json({error: "Error interno de servidor",  details: {}})
+        return res.status(500).json({error: "Internal server error",  details: {}})
     }
 }
 
@@ -99,15 +99,16 @@ controller.findAll = async (req, res) => {
 
             const users = await userCollection().find({}).project({ _id: projectUser._id, hash: projectUser.hash, salt: projectUser.salt, role: projectUser.role}).toArray();
             debugFind(users);
+            
             if(!users) {
-                return res.status(404).json({error: "No hay usuarios registrados",  details: {}});
+                return res.status(404).json({error: "No available users",  details: {}});
             }
 
             return res.status(202).json(users);
         });
     } catch (err) {
         debugMongo({err});
-        return res.status(500).json({error: "Error interno de servidor",  details: {}})
+        return res.status(500).json({error: "Internal server error",  details: {}})
     }
 }
 
@@ -131,13 +132,17 @@ controller.delete = async (req, res) => {
             }
 
             const {
-                identifier,
+                idu,
             } = req.body;
 
             let data;
 
+            if (!idu) {
+                return res.status(400).json({error: "Bad request", details: {}});
+            }
+
             try {
-                data = await userDataSchema.validateAsync({ _id: identifier }, { abortEarly: false });
+                data = await userDataSchema.validateAsync({ _id: idu }, { abortEarly: false });
             }
             catch (err) {
                 debugData(err.details);
@@ -151,7 +156,7 @@ controller.delete = async (req, res) => {
             const findUser = await userCollection().findOne({_id: new ObjectId(data._id)});
             
             if (!findUser) {
-                return res.status(404).json({error: "No existe el usuario",  details: {}});
+                return res.status(404).json({error: "User doesn't exists",  details: {}});
             }
 
             if (adminUser.role === findUser.role || adminUser._id === findUser._id) {
@@ -163,11 +168,11 @@ controller.delete = async (req, res) => {
 
             await loginAttemptCollection().deleteOne({user: new ObjectId(data._id)});
 
-            return res.status(201).json({status: "success"});
+            return res.status(201).json({status: "Success"});
         });
     } catch (err) {
         debugMongo({err});
-        return res.status(500).json({error: "Error interno de servidor",  details: {}})
+        return res.status(500).json({error: "Internal server error",  details: {}})
     }
 }
 
