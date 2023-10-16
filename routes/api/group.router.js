@@ -8,5 +8,6 @@ const groupController = require('../../controllers/group.controller');
 router.post("/", jwtVerifyToken, groupController.create);
 
 router.delete("/", jwtVerifyToken, groupController.delete);
+router.delete("/ru/", jwtVerifyToken, groupController.removeUser);
 
 module.exports = router;

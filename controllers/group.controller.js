@@ -8,7 +8,6 @@ const {ObjectId} = require("mongodb");
 const {groupDataSchema} = require("../model/validate.model");
 const {groupSchema} = require("../model/group.model");
 const {userCollection, jwtCollection, groupCollection} = require("../utils/db/collections.util");
-const {projectUser} = require("../utils/project.util");
 
 const jwt = require('jsonwebtoken');
 const token = process.env.TOKEN_SECRET;
@@ -25,7 +24,7 @@ controller.create = async (req, res) => {
             const findJWT = await jwtCollection().findOne({jwt: req.token});
 
             if(!findJWT || authData.user._id != findJWT.user) {
-                return res.status(403).json({error: "Authorization failed", details: {test: "test"}});
+                return res.status(403).json({error: "Authorization failed", details: {}});
             }
 
             const {
@@ -68,7 +67,7 @@ controller.create = async (req, res) => {
             debugInsert(newGroup);
 
             if (!newGroup) {
-                return res.status(409).json({error: "Ocurrio un error al registrar el grupo",  details: {}});
+                return res.status(409).json({error: "An error ocurred when trying to create the group",  details: {}});
             }
 
             const groupAdded = await userCollection().updateOne(
@@ -78,11 +77,112 @@ controller.create = async (req, res) => {
 
             debugUpdate(groupAdded);
 
-            return res.status(201).json({status: "success"});
+            return res.status(201).json({status: "Success"});
         });
     } catch (err) {
         debugMongo({err});
-        return res.status(500).json({error: "Error interno de servidor",  details: {}})
+        return res.status(500).json({error: "Internal server error",  details: {}})
+    }
+}
+
+controller.removeUser = async (req, res) => {
+    try {
+        jwt.verify(req.token, token, async (error, authData) => {
+            if (error) {
+                return res.sendStatus(403).json({error: "Authorization failed",  details: {token: error.message}});
+            }
+
+            const findJWT = await jwtCollection().findOne({jwt: req.token});
+
+            if(!findJWT || authData.user._id != findJWT.user) {
+                return res.status(403).json({error: "Authorization failed", details: {}});
+            }
+
+            const {
+                idg,
+                idu
+            } = req.body;
+            
+            let data;
+
+            if (!idg || !idu) {
+                return res.status(400).json({error: "Bad request", details: {}});
+            }
+
+            try {
+                data = await groupDataSchema.validateAsync({
+                    _id: idg,
+                    user: idu
+                }, { abortEarly: false });
+            }
+            catch (err) {
+                debugData(err.details);
+                const validationErrors = err.details.map((detail) => ({
+                    message: detail.message,
+                    path: detail.path.join('.'),
+                }));
+                return res.status(400).json({ error: 'Validation Error', details: validationErrors });
+            }
+
+            const findGroup = await groupCollection().findOne({
+                _id: new ObjectId(data._id),
+                $or: [
+                    { group_owner: new ObjectId(authData.user._id) },
+                    { admin_users: new ObjectId(authData.user._id) },
+                ],
+            });
+            
+            if (!findGroup) {
+                return res.status(404).json({error: "Group doesn't exists",  details: {}});
+            }
+
+            const findIfOwner = await groupCollection().findOne({_id: new ObjectId(data._id), group_owner: new ObjectId(data.user)});
+
+            if (findIfOwner && findGroup.group_owner != authData.user._id) {
+                return res.status(403).json({error: "Authorization failed", details: {}});
+            } else if (findIfOwner && findGroup.group_owner == authData.user._id) {
+                /*const removeParticipant = await groupCollection().updateOne(
+                    {_id: new ObjectId(data._id)},
+                    {
+                        group_owner: findGroup.admin_users[0],
+                        $pull: {
+                            participants: new ObjectId(data.user),
+                            admin_users: new ObjectId(data.user)
+                        }
+                    }
+                );
+
+                if (!removeParticipant) {
+                    return res.status(409).json({error: "An error ocurred when trying to remove this participant",  details: {}});
+                }*/
+            }
+
+            const removeParticipant = await groupCollection().updateOne(
+                {_id: new ObjectId(data._id)},
+                {$pull: {
+                    participants: new ObjectId(data.user),
+                    admin_users: new ObjectId(data.user)
+                }}
+            );
+
+            if (!removeParticipant) {
+                return res.status(409).json({error: "An error ocurred when trying to remove this participant",  details: {}});
+            }
+
+            await userCollection().updateOne(
+                {_id: new ObjectId(data.user)},
+                {$pull: {
+                    groups_id: new ObjectId(data._id),
+                }}
+            );
+
+            debugUpdate(removeParticipant);
+
+            return res.status(201).json({status: "Success"});
+        });
+    } catch (err) {
+        debugMongo({err});
+        return res.status(500).json({error: "Internal server error",  details: {}})
     }
 }
 
@@ -96,18 +196,22 @@ controller.delete = async (req, res) => {
             const findJWT = await jwtCollection().findOne({jwt: req.token});
 
             if(!findJWT || authData.user._id != findJWT.user) {
-                return res.status(403).json({error: "Authorization failed", details: {test: "test"}});
+                return res.status(403).json({error: "Authorization failed", details: {}});
             }
 
             const {
-                identifier
+                idg,                
             } = req.body;
             
+            if (!idg) {
+                return res.status(400).json({error: "Bad request", details: {}});
+            }
+
             let data;
 
             try {
                 data = await groupDataSchema.validateAsync({
-                    _id: identifier
+                    _id: idg,                    
                 }, { abortEarly: false });
             }
             catch (err) {
@@ -123,7 +227,7 @@ controller.delete = async (req, res) => {
             const findGroup = await groupCollection().findOne({_id: new ObjectId(data._id)});
             
             if (!findGroup) {
-                return res.status(404).json({error: "No existe el grupo",  details: {}});
+                return res.status(404).json({error: "Group doesn't exists",  details: {}});
             }
 
             if (authData.user._id != findGroup.group_owner) {
@@ -134,10 +238,10 @@ controller.delete = async (req, res) => {
                 _id: new ObjectId(data._id),
             });
 
-            debugInsert(deleteGroup);
+            debugDelete(deleteGroup);
 
             if (!deleteGroup) {
-                return res.status(409).json({error: "Ocurrio un error al eliminar el grupo",  details: {}});
+                return res.status(409).json({error: "An error ocurred when trying to delete this group",  details: {}});
             }
 
             const groupDeleted = await userCollection().updateMany(
@@ -147,11 +251,11 @@ controller.delete = async (req, res) => {
 
             debugUpdate(groupDeleted);
 
-            return res.status(201).json({status: "success"});
+            return res.status(201).json({status: "Success"});
         });
     } catch (err) {
         debugMongo({err});
-        return res.status(500).json({error: "Error interno de servidor",  details: {}})
+        return res.status(500).json({error: "Internal server error",  details: {}})
     }
 }
 

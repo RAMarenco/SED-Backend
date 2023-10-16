@@ -9,6 +9,7 @@ const userDataSchema = joi.object({
 
 const groupDataSchema = joi.object({
     _id: joi.string().min(24).max(24),
+    user: joi.string().min(24).max(24),
 })
 
 module.exports = {userDataSchema, groupDataSchema};
